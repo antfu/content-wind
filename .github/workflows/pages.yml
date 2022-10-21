@@ -1,0 +1,71 @@
+
+name: Deploy Nuxt to Pages
+
+on:
+  # Runs on pushes targeting the default branch
+  push:
+    branches: ["main"]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Allow one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  # Build job
+  build-and-deploy:
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: .
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        node: [16]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Cache node modules
+        id: cache-nodemodules
+        uses: actions/cache@v2
+        env:
+          cache-name: cache-node-modules
+        with:
+          path: node_modules
+          key: ${{ matrix.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/yarn.lock') }}
+
+      - name: Install dependencies
+        if: steps.cache-nodemodules.outputs.cache-hit != 'true'
+        run: yarn
+
+      - name: Install @nuxthq/studio
+        run: yarn add --dev @nuxthq/studio nuxt@npm:nuxt3@latest
+      
+      - name: Create .nuxtrc
+        run: echo 'modules[]=@nuxthq/studio' > .nuxtrc
+
+      - name: Generate
+        run: yarn generate
+        env:
+          NUXT_PUBLIC_STUDIO_API_URL: http://localhost:1337
+          NUXT_APP_BASE_URL: /${{ github.event.repository.name }}
+
+      - name: Add .nojekyll file
+        run: touch .output/public/.nojekyll
+
+        # Deployment job
+      - name: Deploy 🚀
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: ./.output/public
